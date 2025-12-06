@@ -22,11 +22,32 @@ export const load: PageServerLoad = async ({ fetch }) => {
         error(500, "Failed to load settings");
     }
 
+    const schema = await getSchema();
+
+    // Strip ranking from the generic form; it is handled by a custom editor
+    const strippedSchema = structuredClone(schema);
+    if (strippedSchema?.properties?.ranking) {
+        delete strippedSchema.properties.ranking;
+        if (Array.isArray(strippedSchema.required)) {
+            strippedSchema.required = strippedSchema.required.filter(
+                (key: string) => key !== "ranking"
+            );
+        }
+    }
+
+    const strippedInitial = structuredClone(allSettings.data);
+    // Keep a separate copy for the ranking editor
+    const rankingSettings = allSettings.data?.ranking ?? {};
+    if ("ranking" in strippedInitial) {
+        delete strippedInitial.ranking;
+    }
+
     return {
         form: {
-            schema: await getSchema(),
-            initialValue: allSettings.data
-        } satisfies InitialFormData
+            schema: strippedSchema,
+            initialValue: strippedInitial
+        } satisfies InitialFormData,
+        rankingSettings
     };
 };
 

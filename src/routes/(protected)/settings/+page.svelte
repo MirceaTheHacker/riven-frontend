@@ -4,12 +4,12 @@
     import { createMeta, setupSvelteKitForm } from "@sjsf/sveltekit/client";
     import * as defaults from "$lib/components/settings/form-defaults";
     import { setShadcnContext } from "$lib/components/shadcn-context";
+    import RankingSettingsEditor from "$lib/components/settings/ranking-settings-editor.svelte";
     import { toast } from "svelte-sonner";
     import { icons } from "@sjsf/lucide-icons";
     setShadcnContext();
 
     let { data }: { data: PageData } = $props();
-    $inspect(data.form);
 
     const meta = createMeta<ActionData, PageData>().form;
 
@@ -36,6 +36,9 @@
     <title>Settings - Riven</title>
 </svelte:head>
 
-<div class="mt-14 h-full w-full p-6 md:p-8 md:px-16">
-    <BasicForm {form} method="POST"></BasicForm>
+<div class="mt-14 h-full w-full space-y-6 p-6 md:p-8 md:px-16">
+    <RankingSettingsEditor initial={data.rankingSettings} />
+    <div class="rounded-xl border border-border/70 bg-card/30 p-4">
+        <BasicForm {form} method="POST" />
+    </div>
 </div>
