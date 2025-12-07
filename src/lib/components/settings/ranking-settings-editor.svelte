@@ -1,14 +1,16 @@
 <script lang="ts">
-    import { Button } from "$lib/components/ui/button";
     import { Input } from "$lib/components/ui/input";
     import { Label } from "$lib/components/ui/label";
-    import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "$lib/components/ui/select";
     import { Separator } from "$lib/components/ui/separator";
-    import { Switch } from "$lib/components/ui/switch";
-    import { TagsInput } from "$lib/components/ui/extras";
     import { toast } from "svelte-sonner";
-    import { getAllSettings, setAllSettings } from "$lib/api";
-    import type { CustomRanksConfig, LanguagesConfig, OptionsConfig, ResolutionConfig, RtnSettingsModel } from "$lib/api/types.gen";
+    import { getAllSettings, setSettings } from "$lib/api";
+    import type {
+        CustomRanksConfig,
+        LanguagesConfig,
+        OptionsConfig,
+        ResolutionConfig,
+        RtnSettingsModel
+    } from "$lib/api/types.gen";
 
     type CustomRank = NonNullable<CustomRanksConfig[keyof CustomRanksConfig]>[keyof NonNullable<
         CustomRanksConfig[keyof CustomRanksConfig]
@@ -45,37 +47,8 @@
         quality: ["av1", "avc", "bluray", "dvd", "hdtv", "hevc", "mpeg", "remux", "vhs", "web", "webdl", "webmux", "xvid"],
         rips: ["bdrip", "brrip", "dvdrip", "hdrip", "ppvrip", "satrip", "tvrip", "uhdrip", "vhsrip", "webdlrip", "webrip"],
         hdr: ["bit10", "dolby_vision", "hdr", "hdr10plus", "sdr"],
-        audio: [
-            "aac",
-            "atmos",
-            "dolby_digital",
-            "dolby_digital_plus",
-            "dts_lossy",
-            "dts_lossless",
-            "flac",
-            "mono",
-            "mp3",
-            "stereo",
-            "surround",
-            "truehd"
-        ],
-        extras: [
-            "3d",
-            "converted",
-            "documentary",
-            "dubbed",
-            "edition",
-            "hardcoded",
-            "network",
-            "proper",
-            "repack",
-            "retail",
-            "site",
-            "subbed",
-            "upscaled",
-            "scene",
-            "uncensored"
-        ],
+        audio: ["aac", "atmos", "dolby_digital", "dolby_digital_plus", "dts_lossy", "dts_lossless", "flac", "mono", "mp3", "stereo", "surround", "truehd"],
+        extras: ["3d", "converted", "documentary", "dubbed", "edition", "hardcoded", "network", "proper", "repack", "retail", "site", "subbed", "upscaled", "scene", "uncensored"],
         trash: ["cam", "clean_audio", "pdtv", "r5", "screener", "size", "telecine", "telesync"]
     };
 
@@ -129,6 +102,13 @@
         exclude: languages?.exclude ?? [],
         preferred: languages?.preferred ?? []
     });
+
+    const formatCSV = (arr?: string[]) => (arr && arr.length ? arr.join(", ") : "");
+    const parseCSV = (val: string) =>
+        val
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean);
 
     const hydrateProfile = (profile?: RankingProfileSettings): RankingProfileSettings => ({
         name: profile?.name ?? "",
@@ -192,6 +172,7 @@
             settings.default_profile = Object.keys(rest)[0] || "default";
         }
         activeProfile = settings.default_profile;
+        ensureActiveProfile();
         settings = { ...settings };
     };
 
@@ -219,13 +200,18 @@
     const save = async () => {
         saving = true;
         try {
-            const payload = { ranking: settings };
-            const result = await setAllSettings({
-                body: payload
+            const result = await setSettings({
+                body: [
+                    {
+                        key: "ranking",
+                        value: settings
+                    }
+                ]
             });
 
-            if (result.error) {
-                toast.error(result.error.message || "Failed to save ranking settings");
+            if (!result || (result as any).error) {
+                console.error("setSettings failed", (result as any)?.error);
+                toast.error((result as any)?.error?.message || "Failed to save ranking settings");
                 return;
             }
 
@@ -240,6 +226,7 @@
                     settings.default_profile ||
                     Object.keys(settings.profiles)[0] ||
                     activeProfile;
+                ensureActiveProfile();
             }
 
             toast.success("Ranking settings saved");
@@ -249,8 +236,6 @@
             saving = false;
         }
     };
-
-    $: ensureActiveProfile();
 </script>
 
 <div class="space-y-6 rounded-xl border border-border bg-card/40 p-6 shadow-md">
@@ -262,24 +247,37 @@
             </p>
         </div>
         <div class="flex items-center gap-2">
-            <Button variant="outline" on:click={addProfile}>Add profile</Button>
-            <Button on:click={save} disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
+            <button
+                type="button"
+                class="rounded-md border border-border px-3 py-2 text-sm hover:bg-muted"
+                on:click={addProfile}>
+                Add profile
+            </button>
+            <button
+                type="button"
+                class="rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground hover:brightness-110 disabled:opacity-50"
+                disabled={saving}
+                on:click={save}>
+                {saving ? "Saving..." : "Save"}
+            </button>
         </div>
     </div>
 
     <div class="grid gap-4 md:grid-cols-2">
         <div class="space-y-2">
             <Label>Default profile</Label>
-            <Select bind:value={settings.default_profile} on:change={() => (settings = { ...settings })}>
-                <SelectTrigger class="w-full">
-                    <SelectValue placeholder="Select profile" />
-                </SelectTrigger>
-                <SelectContent>
-                    {#each Object.keys(settings.profiles) as name}
-                        <SelectItem value={name}>{name}</SelectItem>
-                    {/each}
-                </SelectContent>
-            </Select>
+            <select
+                class="w-full rounded-md border border-border bg-card px-3 py-2 text-sm"
+                value={settings.default_profile}
+                on:change={(e) => {
+                    settings.default_profile = (e.currentTarget as HTMLSelectElement).value;
+                    ensureActiveProfile();
+                    settings = { ...settings };
+                }}>
+                {#each Object.keys(settings.profiles) as name}
+                    <option value={name} selected={name === settings.default_profile}>{name}</option>
+                {/each}
+            </select>
         </div>
         <div class="space-y-2">
             <Label>Keep versions per item (global)</Label>
@@ -298,7 +296,12 @@
     <div class="space-y-3">
         <div class="flex items-center justify-between">
             <p class="font-medium">Path → profile mapping</p>
-            <Button size="sm" variant="outline" on:click={addMapping}>Add mapping</Button>
+            <button
+                type="button"
+                class="rounded-md border border-border px-3 py-2 text-sm hover:bg-muted"
+                on:click={addMapping}>
+                Add mapping
+            </button>
         </div>
         <div class="space-y-2">
             {#if settings.path_profiles.length === 0}
@@ -311,35 +314,36 @@
                                 <Label>Path</Label>
                                 <Input
                                     placeholder="/mnt/debrid/riven"
-                                    bind:value={mapping.path}
-                                    on:input={() => (settings = { ...settings })} />
+                                    value={mapping.path}
+                                    on:input={(e) => {
+                                        mapping.path = (e.currentTarget as HTMLInputElement).value;
+                                        settings = { ...settings };
+                                    }} />
                             </div>
                             <div class="space-y-1">
                                 <Label>Profile</Label>
-                                <Select
-                                    bind:value={mapping.profile_name}
-                                    on:change={() => (settings = { ...settings })}>
-                                    <SelectTrigger class="w-full">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {#each Object.keys(settings.profiles) as name}
-                                            <SelectItem value={name}>{name}</SelectItem>
-                                        {/each}
-                                    </SelectContent>
-                                </Select>
+                                <select
+                                    class="w-full rounded-md border border-border bg-card px-3 py-2 text-sm"
+                                    value={mapping.profile_name}
+                                    on:change={(e) => {
+                                        mapping.profile_name = (e.currentTarget as HTMLSelectElement).value;
+                                        settings = { ...settings };
+                                    }}>
+                                    {#each Object.keys(settings.profiles) as name}
+                                        <option value={name} selected={name === mapping.profile_name}>{name}</option>
+                                    {/each}
+                                </select>
                             </div>
                             <div class="flex items-end justify-end">
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    class="text-destructive"
+                                <button
+                                    type="button"
+                                    class="rounded-md border border-destructive px-3 py-2 text-sm text-destructive hover:bg-destructive/10"
                                     on:click={() => {
                                         settings.path_profiles = settings.path_profiles.filter((_, i) => i !== idx);
                                         settings = { ...settings };
                                     }}>
                                     Remove
-                                </Button>
+                                </button>
                             </div>
                         </div>
                     {/each}
@@ -358,199 +362,267 @@
             </div>
             <div class="flex items-center gap-2">
                 {#each Object.keys(settings.profiles) as name}
-                    <Button
-                        size="sm"
-                        variant={name === activeProfile ? "default" : "outline"}
-                        on:click={() => (activeProfile = name)}>
+                    <button
+                        type="button"
+                        class={`rounded-md border px-3 py-2 text-sm ${name === activeProfile ? "bg-primary text-primary-foreground" : "bg-card text-foreground"} hover:brightness-110`}
+                        on:click={() => {
+                            activeProfile = name;
+                            ensureActiveProfile();
+                            settings = { ...settings };
+                        }}>
                         {name}
-                    </Button>
-                {/each}
-                {#if activeProfile !== "default"}
-                    <Button
-                        size="icon"
-                        variant="ghost"
-                        class="text-destructive"
+                    </button>
+                    {/each}
+                    {#if activeProfile !== "default"}
+                    <button
+                        type="button"
+                        class="rounded-full border border-destructive px-2 py-1 text-destructive hover:bg-destructive/10"
                         title="Delete profile"
                         on:click={() => deleteProfile(activeProfile)}>
                         ×
-                    </Button>
-                {/if}
+                    </button>
+                    {/if}
+                </div>
             </div>
-        </div>
 
         {#if settings.profiles[activeProfile]}
-            {#key activeProfile}
-                <div class="space-y-6 rounded-lg border border-border/70 p-4">
-                    <div class="grid gap-3 md:grid-cols-2">
+            <div class="space-y-6 rounded-lg border border-border/70 p-4">
+                <div class="grid gap-3 md:grid-cols-2">
+                    <div class="space-y-1">
+                        <Label>Profile name</Label>
+                        <Input
+                            value={settings.profiles[activeProfile].name}
+                            on:input={(e) => {
+                                settings.profiles[activeProfile].name = (e.currentTarget as HTMLInputElement).value;
+                                settings = { ...settings };
+                            }}
+                            placeholder="Display name" />
+                    </div>
+                    <div class="space-y-1">
+                        <Label>Keep versions (override)</Label>
+                        <Input
+                            type="number"
+                            min="1"
+                            value={settings.profiles[activeProfile].keep_versions_per_item ?? ""}
+                            placeholder="Inherit global"
+                            on:input={(e) => {
+                                const val = (e.currentTarget as HTMLInputElement).value;
+                                settings.profiles[activeProfile].keep_versions_per_item =
+                                    val === "" ? undefined : Math.max(1, Number(val) || 1);
+                                settings = { ...settings };
+                            }} />
+                    </div>
+                </div>
+
+                <label class="flex items-center gap-2">
+                    <input
+                        type="checkbox"
+                        class="h-4 w-4 accent-primary"
+                        checked={settings.profiles[activeProfile].enabled}
+                        on:change={(e) => {
+                            settings.profiles[activeProfile].enabled = (e.currentTarget as HTMLInputElement).checked;
+                            settings = { ...settings };
+                        }} />
+                    <span class="text-sm">Profile enabled</span>
+                </label>
+
+                <div class="grid gap-4 md:grid-cols-3">
+                    <div class="space-y-2">
+                        <Label>Required terms (comma-separated)</Label>
+                        <Input
+                            value={formatCSV(settings.profiles[activeProfile].require)}
+                            on:input={(e) => {
+                                settings.profiles[activeProfile].require = parseCSV(
+                                    (e.currentTarget as HTMLInputElement).value
+                                );
+                                settings = { ...settings };
+                            }} />
+                    </div>
+                    <div class="space-y-2">
+                        <Label>Excluded terms (comma-separated)</Label>
+                        <Input
+                            value={formatCSV(settings.profiles[activeProfile].exclude)}
+                            on:input={(e) => {
+                                settings.profiles[activeProfile].exclude = parseCSV(
+                                    (e.currentTarget as HTMLInputElement).value
+                                );
+                                settings = { ...settings };
+                            }} />
+                    </div>
+                    <div class="space-y-2">
+                        <Label>Preferred terms (comma-separated)</Label>
+                        <Input
+                            value={formatCSV(settings.profiles[activeProfile].preferred)}
+                            on:input={(e) => {
+                                settings.profiles[activeProfile].preferred = parseCSV(
+                                    (e.currentTarget as HTMLInputElement).value
+                                );
+                                settings = { ...settings };
+                            }} />
+                    </div>
+                </div>
+
+                <div class="grid gap-4 md:grid-cols-2">
+                    <div class="space-y-2">
+                        <Label>Languages - required (comma-separated)</Label>
+                        <Input
+                            value={formatCSV(settings.profiles[activeProfile].languages.required)}
+                            on:input={(e) => {
+                                settings.profiles[activeProfile].languages.required = parseCSV(
+                                    (e.currentTarget as HTMLInputElement).value
+                                );
+                                settings = { ...settings };
+                            }} />
+                    </div>
+                    <div class="space-y-2">
+                        <Label>Languages - exclude (comma-separated)</Label>
+                        <Input
+                            value={formatCSV(settings.profiles[activeProfile].languages.exclude)}
+                            on:input={(e) => {
+                                settings.profiles[activeProfile].languages.exclude = parseCSV(
+                                    (e.currentTarget as HTMLInputElement).value
+                                );
+                                settings = { ...settings };
+                            }} />
+                    </div>
+                    <div class="space-y-2 md:col-span-2">
+                        <Label>Languages - preferred (comma-separated)</Label>
+                        <Input
+                            value={formatCSV(settings.profiles[activeProfile].languages.preferred)}
+                            on:input={(e) => {
+                                settings.profiles[activeProfile].languages.preferred = parseCSV(
+                                    (e.currentTarget as HTMLInputElement).value
+                                );
+                                settings = { ...settings };
+                            }} />
+                    </div>
+                </div>
+
+                <div class="space-y-3">
+                    <p class="font-medium">Resolutions</p>
+                    <div class="grid grid-cols-2 gap-3 md:grid-cols-3">
+                        {#each RESOLUTION_KEYS as key}
+                            <label class="flex items-center gap-2 text-sm capitalize">
+                                <input
+                                    type="checkbox"
+                                    class="h-4 w-4 accent-primary"
+                                    checked={settings.profiles[activeProfile].resolutions[key]}
+                                    on:change={(e) => {
+                                        settings.profiles[activeProfile].resolutions[key] = (e.currentTarget as HTMLInputElement).checked;
+                                        settings = { ...settings };
+                                    }} />
+                                <span>{key.replace("r", "").toUpperCase()}</span>
+                            </label>
+                        {/each}
+                    </div>
+                </div>
+
+                <div class="space-y-3">
+                    <p class="font-medium">Options</p>
+                    <div class="grid gap-3 md:grid-cols-3">
                         <div class="space-y-1">
-                            <Label>Profile name</Label>
-                            <Input bind:value={settings.profiles[activeProfile].name} placeholder="Display name" />
-                        </div>
-                        <div class="space-y-1">
-                            <Label>Keep versions (override)</Label>
+                            <Label>Title similarity</Label>
                             <Input
                                 type="number"
-                                min="1"
-                                value={settings.profiles[activeProfile].keep_versions_per_item ?? ""}
-                                placeholder="Inherit global"
+                                step="0.1"
+                                value={settings.profiles[activeProfile].options.title_similarity ?? 0}
                                 on:input={(e) => {
-                                    const val = (e.currentTarget as HTMLInputElement).value;
-                                    settings.profiles[activeProfile].keep_versions_per_item =
-                                        val === "" ? undefined : Math.max(1, Number(val) || 1);
+                                    settings.profiles[activeProfile].options.title_similarity =
+                                        Number((e.currentTarget as HTMLInputElement).value) || 0;
+                                    settings = { ...settings };
+                                }} />
+                        </div>
+                        <div class="space-y-1">
+                            <Label>Remove ranks under</Label>
+                            <Input
+                                type="number"
+                                value={settings.profiles[activeProfile].options.remove_ranks_under ?? 0}
+                                on:input={(e) => {
+                                    settings.profiles[activeProfile].options.remove_ranks_under =
+                                        Number((e.currentTarget as HTMLInputElement).value) || 0;
                                     settings = { ...settings };
                                 }} />
                         </div>
                     </div>
-
-                    <div class="flex items-center gap-2">
-                        <Switch
-                            bind:checked={settings.profiles[activeProfile].enabled}
-                            on:change={() => (settings = { ...settings })} />
-                        <span class="text-sm">Profile enabled</span>
-                    </div>
-
-                    <div class="grid gap-4 md:grid-cols-3">
-                        <div class="space-y-2">
-                            <Label>Required terms</Label>
-                            <TagsInput bind:value={settings.profiles[activeProfile].require} />
-                        </div>
-                        <div class="space-y-2">
-                            <Label>Excluded terms</Label>
-                            <TagsInput bind:value={settings.profiles[activeProfile].exclude} />
-                        </div>
-                        <div class="space-y-2">
-                            <Label>Preferred terms</Label>
-                            <TagsInput bind:value={settings.profiles[activeProfile].preferred} />
-                        </div>
-                    </div>
-
-                    <div class="grid gap-4 md:grid-cols-2">
-                        <div class="space-y-2">
-                            <Label>Languages - required</Label>
-                            <TagsInput bind:value={settings.profiles[activeProfile].languages.required} />
-                        </div>
-                        <div class="space-y-2">
-                            <Label>Languages - exclude</Label>
-                            <TagsInput bind:value={settings.profiles[activeProfile].languages.exclude} />
-                        </div>
-                        <div class="space-y-2 md:col-span-2">
-                            <Label>Languages - preferred</Label>
-                            <TagsInput bind:value={settings.profiles[activeProfile].languages.preferred} />
-                        </div>
-                    </div>
-
-                    <div class="space-y-3">
-                        <p class="font-medium">Resolutions</p>
-                        <div class="grid grid-cols-2 gap-3 md:grid-cols-3">
-                            {#each RESOLUTION_KEYS as key}
-                                <label class="flex items-center gap-2 text-sm capitalize">
-                                    <Switch
-                                        bind:checked={settings.profiles[activeProfile].resolutions[key]}
-                                        on:change={() => (settings = { ...settings })} />
-                                    <span>{key.replace("r", "").toUpperCase()}</span>
-                                </label>
-                            {/each}
-                        </div>
-                    </div>
-
-                    <div class="space-y-3">
-                        <p class="font-medium">Options</p>
-                        <div class="grid gap-3 md:grid-cols-3">
-                            <div class="space-y-1">
-                                <Label>Title similarity</Label>
-                                <Input
-                                    type="number"
-                                    step="0.1"
-                                    value={settings.profiles[activeProfile].options.title_similarity ?? 0}
-                                    on:input={(e) => {
-                                        settings.profiles[activeProfile].options.title_similarity =
-                                            Number((e.currentTarget as HTMLInputElement).value) || 0;
+                    <div class="grid gap-2 md:grid-cols-2">
+                        {#each OPTION_BOOL_KEYS as key}
+                            <label class="flex items-center gap-2 text-sm capitalize">
+                                <input
+                                    type="checkbox"
+                                    class="h-4 w-4 accent-primary"
+                                    checked={settings.profiles[activeProfile].options[key]}
+                                    on:change={(e) => {
+                                        settings.profiles[activeProfile].options[key] = (e.currentTarget as HTMLInputElement).checked;
                                         settings = { ...settings };
                                     }} />
-                            </div>
-                            <div class="space-y-1">
-                                <Label>Remove ranks under</Label>
-                                <Input
-                                    type="number"
-                                    value={settings.profiles[activeProfile].options.remove_ranks_under ?? 0}
-                                    on:input={(e) => {
-                                        settings.profiles[activeProfile].options.remove_ranks_under =
-                                            Number((e.currentTarget as HTMLInputElement).value) || 0;
-                                        settings = { ...settings };
-                                    }} />
-                            </div>
-                        </div>
-                        <div class="grid gap-2 md:grid-cols-2">
-                            {#each OPTION_BOOL_KEYS as key}
-                                <label class="flex items-center gap-2 text-sm capitalize">
-                                    <Switch
-                                        bind:checked={settings.profiles[activeProfile].options[key]}
-                                        on:change={() => (settings = { ...settings })} />
-                                    <span>{key.replace(/_/g, " ")}</span>
-                                </label>
-                            {/each}
-                        </div>
+                                <span>{key.replace(/_/g, " ")}</span>
+                            </label>
+                        {/each}
                     </div>
+                </div>
 
-                    <div class="space-y-4">
-                        <p class="font-medium">Custom ranks</p>
-                        <div class="space-y-3">
-                            {#each Object.entries(CUSTOM_SECTIONS) as [section, keys]}
-                                <div class="space-y-2 rounded-md border border-border/60 p-3">
-                                    <p class="text-sm font-semibold capitalize">{section}</p>
-                                    <div class="grid gap-3 md:grid-cols-2">
-                                        {#each keys as key}
-                                            <div class="space-y-1 rounded border border-border/50 p-2">
-                                                <div class="flex items-center justify-between">
-                                                    <span class="text-xs font-medium uppercase">{key}</span>
-                                                    <Switch
-                                                        bind:checked={settings.profiles[activeProfile].custom_ranks?.[section]?.[key]?.use_custom_rank}
-                                                        on:change={(event) =>
-                                                            updateCustomRank(
-                                                                section as keyof CustomRanksConfig,
-                                                                key,
-                                                                "use_custom_rank",
-                                                                (event.currentTarget as HTMLInputElement).checked
-                                                            )
-                                                        } />
-                                                </div>
-                                                <div class="flex items-center gap-2 text-xs">
-                                                    <Switch
-                                                        bind:checked={settings.profiles[activeProfile].custom_ranks?.[section]?.[key]?.fetch}
-                                                        on:change={(event) =>
-                                                            updateCustomRank(
-                                                                section as keyof CustomRanksConfig,
-                                                                key,
-                                                                "fetch",
-                                                                (event.currentTarget as HTMLInputElement).checked
-                                                            )
-                                                        } />
-                                                    <span>Fetch</span>
-                                                </div>
-                                                <Input
-                                                    type="number"
-                                                    class="mt-2 h-8 text-xs"
-                                                    value={settings.profiles[activeProfile].custom_ranks?.[section]?.[key]?.rank ?? ""}
-                                                    placeholder="rank"
-                                                    on:input={(e) =>
+                <div class="space-y-4">
+                    <p class="font-medium">Custom ranks</p>
+                    <div class="space-y-3">
+                        {#each Object.entries(CUSTOM_SECTIONS) as [section, keys]}
+                            <div class="space-y-2 rounded-md border border-border/60 p-3">
+                                <p class="text-sm font-semibold capitalize">{section}</p>
+                                <div class="grid gap-3 md:grid-cols-2">
+                                    {#each keys as key}
+                                        <div class="space-y-1 rounded border border-border/50 p-2">
+                                            <div class="flex items-center justify-between">
+                                                <span class="text-xs font-medium uppercase">{key}</span>
+                                                <input
+                                                    type="checkbox"
+                                                    class="h-4 w-4 accent-primary"
+                                                    checked={Boolean(settings.profiles[activeProfile].custom_ranks?.[section]?.[key]?.use_custom_rank)}
+                                                    on:change={(event) =>
                                                         updateCustomRank(
                                                             section as keyof CustomRanksConfig,
                                                             key,
-                                                            "rank",
-                                                            (e.currentTarget as HTMLInputElement).value === ""
-                                                                ? undefined
-                                                                : Number((e.currentTarget as HTMLInputElement).value) || 0
+                                                            "use_custom_rank",
+                                                            (event.currentTarget as HTMLInputElement).checked
                                                         )
                                                     } />
                                             </div>
-                                        {/each}
-                                    </div>
+                                            <div class="flex items-center gap-2 text-xs">
+                                                <input
+                                                    type="checkbox"
+                                                    class="h-4 w-4 accent-primary"
+                                                    checked={Boolean(settings.profiles[activeProfile].custom_ranks?.[section]?.[key]?.fetch)}
+                                                    on:change={(event) =>
+                                                        updateCustomRank(
+                                                            section as keyof CustomRanksConfig,
+                                                            key,
+                                                            "fetch",
+                                                            (event.currentTarget as HTMLInputElement).checked
+                                                        )
+                                                    } />
+                                                <span>Fetch</span>
+                                            </div>
+                                            <Input
+                                                type="number"
+                                                class="mt-2 h-8 text-xs"
+                                                value={settings.profiles[activeProfile].custom_ranks?.[section]?.[key]?.rank ?? ""}
+                                                placeholder="rank"
+                                                on:input={(e) =>
+                                                    updateCustomRank(
+                                                        section as keyof CustomRanksConfig,
+                                                        key,
+                                                        "rank",
+                                                        (e.currentTarget as HTMLInputElement).value === ""
+                                                            ? undefined
+                                                            : Number((e.currentTarget as HTMLInputElement).value) || 0
+                                                    )
+                                                } />
+                                        </div>
+                                    {/each}
                                 </div>
-                            {/each}
-                        </div>
+                            </div>
+                        {/each}
                     </div>
                 </div>
-            {/key}
+            </div>
         {/if}
     </div>
 </div>

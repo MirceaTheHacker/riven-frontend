@@ -30,12 +30,14 @@
             toast.error("Something went wrong while saving settings");
         }
     });
+
 </script>
 
 <svelte:head>
     <title>Settings - Riven</title>
 </svelte:head>
 
+<!-- Client-only wrapper to avoid SSR hydration issues -->
 <div class="mt-14 h-full w-full space-y-6 p-6 md:p-8 md:px-16">
     <RankingSettingsEditor initial={data.rankingSettings} />
     <div class="rounded-xl border border-border/70 bg-card/30 p-4">
